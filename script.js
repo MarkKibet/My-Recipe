@@ -1,27 +1,21 @@
 document.addEventListener("DOMContentLoaded", () => {
-    let recipes = JSON.parse(localStorage.getItem('recipes')) || [];
+    let recipes = [];
 
-    // Fetch initial data if local storage is empty
-    if (recipes.length === 0) {
-        fetch('recipes.json')
-            .then(response => response.json())
-            .then(data => {
-                recipes = data;
-                localStorage.setItem('recipes', JSON.stringify(recipes));
-                recipes.forEach(recipe => renderRecipe(recipe));
-            })
-            .catch(error => {
-                console.error('Error fetching the recipes:', error);
-            });
-    } else {
-        // Render all recipes from local storage
-        recipes.forEach(recipe => renderRecipe(recipe));
-    }
+    // Fetch initial data from the JSON Server
+    fetch('http://localhost:3000/recipes')
+        .then(response => response.json())
+        .then(data => {
+            recipes = data;
+            recipes.forEach(recipe => renderRecipe(recipe));
+        })
+        .catch(error => {
+            console.error('Error fetching the recipes:', error);
+        });
 
     // Show/Hide Recipe Form
-    let addRecipeButton = document.getElementById('addRecipeButton');
-    let recipeFormContainer = document.getElementById('recipeFormContainer');
-    let closeFormButton = document.getElementById('closeFormButton');
+    const addRecipeButton = document.getElementById('addRecipeButton');
+    const recipeFormContainer = document.getElementById('recipeFormContainer');
+    const closeFormButton = document.getElementById('closeFormButton');
 
     addRecipeButton.addEventListener('click', () => {
         recipeFormContainer.style.display = 'block';
@@ -48,10 +42,23 @@ document.addEventListener("DOMContentLoaded", () => {
             steps: document.getElementById('steps').value.split('\n')
         };
 
-        recipes.push(newRecipe);
-        localStorage.setItem('recipes', JSON.stringify(recipes));
-        renderRecipe(newRecipe);
-        recipeFormContainer.style.display = 'none';
+        // Add new recipe to JSON Server
+        fetch('http://localhost:3000/recipes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(newRecipe)
+        })
+        .then(response => response.json())
+        .then(data => {
+            recipes.push(data);
+            renderRecipe(data);
+            recipeFormContainer.style.display = 'none';
+        })
+        .catch(error => {
+            console.error('Error adding the recipe:', error);
+        });
     });
 
     // Handle Remove Recipe button
@@ -63,13 +70,23 @@ document.addEventListener("DOMContentLoaded", () => {
                 return card.querySelector(".card-title").textContent === recipeName;
             });
             if (recipeCard) {
+                const recipeId = recipeCard.id;
                 const modalId = recipeCard.id.replace("card", "myModal");
-                recipeCard.remove();
-                document.getElementById(modalId).remove();
 
-                // Update recipes in local storage
-                recipes = recipes.filter(recipe => recipe.recipeName !== recipeName);
-                localStorage.setItem('recipes', JSON.stringify(recipes));
+                // Remove recipe from JSON Server
+                fetch(`http://localhost:3000/recipes/${recipeId}`, {
+                    method: 'DELETE'
+                })
+                .then(() => {
+                    recipeCard.remove();
+                    document.getElementById(modalId).remove();
+
+                    // Update recipes array
+                    recipes = recipes.filter(recipe => recipe.id !== recipeId);
+                })
+                .catch(error => {
+                    console.error('Error removing the recipe:', error);
+                });
             } else {
                 alert("Recipe not found.");
             }
@@ -103,18 +120,32 @@ document.addEventListener("DOMContentLoaded", () => {
                     recipe.ingredients = document.getElementById('ingredients').value.split('\n');
                     recipe.steps = document.getElementById('steps').value.split('\n');
 
-                    // Update the UI
-                    recipeCard.querySelector(".card-title").textContent = recipe.recipeName;
-                    recipeCard.querySelector(".card-img-top").src = recipe.recipeImage;
-                    const modal = document.getElementById(recipe.modalId);
-                    modal.querySelector("h1").textContent = recipe.recipeName;
-                    modal.querySelector(".image-container img").src = recipe.modalImage;
-                    modal.querySelector("ul").innerHTML = recipe.ingredients.map(ingredient => `<li>${ingredient}</li>`).join('');
-                    modal.querySelector("ol").innerHTML = recipe.steps.map(step => `<li>${step}</li>`).join('');
+                    // Update recipe on JSON Server
+                    fetch(`http://localhost:3000/recipes/${recipeId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(recipe)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update the UI
+                        recipeCard.querySelector(".card-title").textContent = data.recipeName;
+                        recipeCard.querySelector(".card-img-top").src = data.recipeImage;
+                        const modal = document.getElementById(data.modalId);
+                        modal.querySelector("h1").textContent = data.recipeName;
+                        modal.querySelector(".image-container img").src = data.modalImage;
+                        modal.querySelector("ul").innerHTML = data.ingredients.map(ingredient => `<li>${ingredient}</li>`).join('');
+                        modal.querySelector("ol").innerHTML = data.steps.map(step => `<li>${step}</li>`).join('');
 
-                    // Save updated recipes to local storage
-                    localStorage.setItem('recipes', JSON.stringify(recipes));
-                    recipeFormContainer.style.display = 'none';
+                        // Update recipes array
+                        recipes = recipes.map(r => r.id === data.id ? data : r);
+                        recipeFormContainer.style.display = 'none';
+                    })
+                    .catch(error => {
+                        console.error('Error updating the recipe:', error);
+                    });
                 }, { once: true });
             } else {
                 alert("Recipe not found.");
@@ -194,48 +225,36 @@ function renderRecipe(recipe) {
         });
     });
 
-    // Add event listener for closing the modal
-    const closeModalBtn = modal.querySelector(".close");
-    closeModalBtn.addEventListener("click", () => {
-        modal.style.display = "none";
-    });
-
-    // Add event listener for closing the modal when clicking outside of it
-    window.addEventListener("click", (event) => {
-        if (event.target == modal) {
-            modal.style.display = "none";
-        }
-    });
-
-   // Add event listener for removing the recipe
-const removeRecipeBtn = recipeCard.querySelector(".remove-recipe");
-removeRecipeBtn.addEventListener("click", () => {
-    recipeCard.remove();
-    modal.remove();
-
-    // Update recipes in local storage
-    recipes = recipes.filter(r => r.id !== recipe.id);
-    localStorage.setItem('recipes', JSON.stringify(recipes));
-});
-
-// Add event listener for closing the modal when clicking outside of it
-window.addEventListener("click", (event) => {
-    if (event.target == modal) {
-        modal.style.display = "none";
-    }
-});
-}
-
-// Form Close Button
-let addRecipeButton = document.getElementById('addRecipeButton');
-let closeFormButton = document.getElementById('closeFormButton');
-let recipeFormContainer = document.getElementById('recipeFormContainer');
-
-addRecipeButton.addEventListener('click', () => {
-    recipeFormContainer.style.display = 'block';
-    document.getElementById('recipeForm').reset(); // Clear the form
-});
-
-closeFormButton.addEventListener('click', () => {
-    recipeFormContainer.style.display = 'none';
-});
+       // Add event listener for closing the modal
+       const closeModalBtn = modal.querySelector(".close");
+       closeModalBtn.addEventListener("click", () => {
+           modal.style.display = "none";
+       });
+   
+       // Add event listener for closing the modal when clicking outside of it
+       window.addEventListener("click", (event) => {
+           if (event.target == modal) {
+               modal.style.display = "none";
+           }
+       });
+   
+       // Add event listener for removing the recipe
+       const removeRecipeBtn = recipeCard.querySelector(".remove-recipe");
+       removeRecipeBtn.addEventListener("click", () => {
+           recipeCard.remove();
+           modal.remove();
+   
+           // Update recipes in local storage
+           fetch(`http://localhost:3000/recipes/${recipe.id}`, {
+               method: 'DELETE'
+           })
+           .then(() => {
+               recipes = recipes.filter(r => r.id !== recipe.id);
+               localStorage.setItem('recipes', JSON.stringify(recipes));
+           })
+           .catch(error => {
+               console.error('Error removing the recipe:', error);
+           });
+       });
+   }
+   
